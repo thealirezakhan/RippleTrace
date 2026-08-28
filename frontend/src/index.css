@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* React Flow overrides - prevent Tailwind reset from breaking edge SVG */
+.react-flow__edges {
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: all;
+}
+
+.react-flow__edge-path {
+  stroke-width: 1;
+}
+
 @layer base {
   body {
     @apply bg-surface text-on-surface font-body;

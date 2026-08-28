@@ -1,265 +1,383 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { ReactFlow, Background, Controls, MiniMap, useReactFlow, applyNodeChanges, applyEdgeChanges } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import { ReactFlowProvider } from "@xyflow/react";
+import GraphView from "../components/GraphView";
 
 const TYPE_COLORS = {
-  Document: { bg: "#131b2e", border: "#0f172a", text: "#ffffff", icon: "description" },
-  threshold: { bg: "#f0f3ff", border: "#4b41e1", text: "#111c2d", icon: "gavel" },
-  constraint: { bg: "#fef3c7", border: "#d97706", text: "#111c2d", icon: "gavel" },
-  variable: { bg: "#ede9fe", border: "#7c3aed", text: "#111c2d", icon: "gavel" },
-  condition: { bg: "#d1fae5", border: "#059669", text: "#111c2d", icon: "gavel" },
+  threshold: { bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" },
+  constraint: { bg: "#fef3c7", border: "#f59e0b", text: "#92400e" },
+  variable: { bg: "#ede9fe", border: "#8b5cf6", text: "#5b21b6" },
+  condition: { bg: "#d1fae5", border: "#10b981", text: "#065f46" },
 };
 
-const EDGE_COLORS = {
-  DEPENDS_ON: "#4b41e1",
-  REFERENCES: "#76777d",
-  HAS_POLICY: "#059669",
-  HAS_SECTION: "#c6c6cd",
+const EDGE_LABELS = {
+  DEPENDS_ON: { label: "Depends On", color: "#f59e0b", icon: "link" },
+  REFERENCES: { label: "References", color: "#3b82f6", icon: "reference" },
+  HAS_POLICY: { label: "Defines", color: "#10b981", icon: "policy" },
+  HAS_SECTION: { label: "Has Section", color: "#94a3b8", icon: "section" },
+  CONFLICTS_WITH: { label: "Conflicts", color: "#ef4444", icon: "warning" },
+  SUPERSEDED_BY: { label: "Superseded", color: "#6366f1", icon: "history" },
 };
 
-function computeLayout(nodes) {
-  if (nodes.length === 0) return [];
-  const docNodes = nodes.filter((n) => n.type === "Document");
-  const polNodes = nodes.filter((n) => n.type === "PolicyElement");
-  const positioned = new Map();
-  const docSpacing = 400;
-  docNodes.forEach((doc, i) => positioned.set(doc.id, { x: 80 + i * docSpacing, y: 40 }));
-  const docPols = new Map();
-  polNodes.forEach((p) => {
-    const did = p.data?.doc_id ? `doc-${p.data.doc_id}` : null;
-    if (did) { if (!docPols.has(did)) docPols.set(did, []); docPols.get(did).push(p); }
-  });
-  docPols.forEach((pols, did) => {
-    const dp = positioned.get(did);
-    if (!dp) return;
-    pols.forEach((p, j) => {
-      const col = Math.floor(j / 6);
-      const row = j % 6;
-      positioned.set(p.id, { x: dp.x + col * 170, y: dp.y + 160 + row * 72 });
-    });
-  });
-  nodes.forEach((n) => { if (!positioned.has(n.id)) positioned.set(n.id, { x: 100, y: 400 }); });
-  return nodes.map((n) => ({ ...n, position: positioned.get(n.id) || { x: 0, y: 0 } }));
-}
-
-function PolicyNode({ data }) {
-  const ts = TYPE_COLORS[data.element_type] || TYPE_COLORS.threshold;
+function StatPill({ value, label, color }) {
   return (
-    <div className="rounded border-2 px-3 py-2 bg-white min-w-[140px] max-w-[160px]" style={{ borderColor: ts.border }}>
-      <div className="flex items-center gap-1 mb-1">
-        <span className="material-symbols-outlined text-[14px]" style={{ color: ts.border }}>{ts.icon}</span>
-        <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: ts.text }}>{data.element_type || "policy"}</span>
-      </div>
-      <div className="text-body-xs font-heading font-semibold text-on-surface leading-tight truncate">{data.label || data.name}</div>
-      {data.doc_filename && <div className="text-[10px] text-on-surface-variant mt-1 truncate">{data.doc_filename}</div>}
+    <div className="flex flex-col items-center py-1.5 px-1 rounded bg-slate-50 border border-slate-100">
+      <span className="text-base font-bold" style={{ color }}>{value}</span>
+      <span className="text-[9px] text-slate-400 uppercase tracking-wider leading-tight">{label}</span>
     </div>
   );
 }
 
-function DocumentNode({ data }) {
-  return (
-    <div className="rounded border-2 px-4 py-3 bg-inverse-surface min-w-[200px]">
-      <div className="text-[9px] font-mono uppercase tracking-wider text-inverse-on-surface/60 mb-1">Document</div>
-      <div className="text-body-sm font-heading font-semibold text-inverse-on-surface leading-tight">{data.label || "Untitled"}</div>
-      {data.chunk_count != null && (
-        <div className="text-[10px] text-inverse-on-surface/70 mt-1.5 flex gap-3">
-          <span>{data.chunk_count} sections</span>
-          <span>{data.policy_count} elements</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-const nodeTypes = { Document: DocumentNode, PolicyElement: PolicyNode };
-
-export default function KnowledgeGraph() {
-  const [graphData, setGraphData] = useState({ nodes: [], edges: [] });
-  const [selectedNodeId, setSelectedNodeId] = useState(null);
-  const [nodeTypes_, setNodeTypes] = useState({ Document: true, PolicyElement: true });
-  const [relTypes, setRelTypes] = useState({ DEPENDS_ON: true, REFERENCES: true, HAS_POLICY: true, HAS_SECTION: true });
-  const [inspector, setInspector] = useState(null);
-  const [nodes, setNodes] = useState([]);
-  const [edges, setEdges] = useState([]);
-  const { fitView } = useReactFlow();
+function ProvenancePanel({ node, onClose }) {
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch("/api/graph/overview").then((r) => r.json()).then((d) => {
-      setGraphData({ nodes: d.nodes || [], edges: d.edges || [] });
-    }).catch(() => {});
-  }, []);
+    if (!node?.data?.policy_id) return;
+    setLoading(true);
+    fetch(`/api/graph/node/${node.data.policy_id}`)
+      .then((r) => r.json())
+      .then(setDetail)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [node?.data?.policy_id]);
 
-  const filteredNodeIds = useMemo(() => {
-    return new Set(graphData.nodes.filter((n) => nodeTypes_[n.type] ?? true).map((n) => n.id));
-  }, [graphData.nodes, nodeTypes_]);
+  if (!node) return null;
 
-  const computedNodes = useMemo(() => {
-    const layout = computeLayout(graphData.nodes.filter((n) => filteredNodeIds.has(n.id)));
-    return layout.map((n) => ({
-      id: n.id,
-      type: n.type === "Document" ? "Document" : "PolicyElement",
-      data: { ...n.data, label: n.data?.label || n.id },
-      position: n.position,
-      style: { opacity: selectedNodeId && n.id !== selectedNodeId ? 0.15 : 1, transition: "opacity 0.2s" },
-    }));
-  }, [graphData.nodes, filteredNodeIds, selectedNodeId]);
-
-  const computedEdges = useMemo(() => {
-    return graphData.edges
-      .filter((e) => filteredNodeIds.has(e.source) && filteredNodeIds.has(e.target))
-      .filter((e) => relTypes[e.type] ?? true)
-      .map((e, i) => ({
-        id: `e-${i}`,
-        source: String(e.source),
-        target: String(e.target),
-        type: (e.type === "DEPENDS_ON" || e.type === "REFERENCES") ? "default" : "smoothstep",
-        animated: selectedNodeId && (e.source === selectedNodeId || e.target === selectedNodeId),
-        style: {
-          stroke: EDGE_COLORS[e.type] || "#c6c6cd",
-          strokeWidth: selectedNodeId && (e.source === selectedNodeId || e.target === selectedNodeId) ? 2 : 1,
-          opacity: selectedNodeId && !(e.source === selectedNodeId || e.target === selectedNodeId) ? 0.15 : (e.type === "DEPENDS_ON" || e.type === "REFERENCES") ? 0.5 : 0.8,
-        },
-        markerEnd: (e.type === "DEPENDS_ON" || e.type === "REFERENCES") ? { type: "arrowclosed", color: EDGE_COLORS[e.type] || "#c6c6cd", width: 12, height: 12 } : undefined,
-      }));
-  }, [graphData.edges, filteredNodeIds, selectedNodeId, relTypes]);
-
-  useEffect(() => { setNodes(computedNodes); setEdges(computedEdges); }, [computedNodes, computedEdges]);
-
-  useEffect(() => {
-    if (nodes.length > 0) { const t = setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 200); return () => clearTimeout(t); }
-  }, [graphData, fitView]);
-
-  const onNodesChange = useCallback((c) => setNodes((nds) => applyNodeChanges(c, nds)), []);
-  const onEdgesChange = useCallback((c) => setEdges((eds) => applyEdgeChanges(c, eds)), []);
-
-  const handleNodeClick = useCallback((_, node) => {
-    setSelectedNodeId(node.id);
-    const nd = graphData.nodes.find((n) => n.id === node.id);
-    if (nd?.type === "PolicyElement") {
-      const pid = nd.data?.policy_id || node.id.replace("policy-", "");
-      fetch(`/api/graph/node/${pid}`).then((r) => r.json()).then(setInspector).catch(() => {});
-    } else {
-      setInspector(null);
-    }
-  }, [graphData.nodes]);
+  const data = node.data || {};
+  const typeStyle = TYPE_COLORS[data.element_type] || TYPE_COLORS.threshold;
 
   return (
-    <div className="h-full flex">
-      {/* Config sidebar */}
-      <div className="w-[220px] border-r border-outline-variant bg-surface-container-lowest p-4 shrink-0 overflow-y-auto">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="material-symbols-outlined text-[16px] text-on-surface-variant">filter_list</span>
-          <span className="text-label-bold text-on-surface">Graph Configuration</span>
-        </div>
-
-        <div className="mb-4">
-          <div className="text-label-mono text-on-surface-variant uppercase tracking-widest text-[9px] mb-2">Node Types</div>
-          {Object.entries({ Document: graphData.nodes.filter((n) => n.type === "Document").length, PolicyElement: graphData.nodes.filter((n) => n.type === "PolicyElement").length }).map(([type, count]) => (
-            <label key={type} className="flex items-center gap-2 text-body-xs text-on-surface py-1 cursor-pointer">
-              <input type="checkbox" checked={nodeTypes_[type]} onChange={() => setNodeTypes({ ...nodeTypes_, [type]: !nodeTypes_[type] })} className="rounded border-outline-variant accent-secondary" />
-              <span className="material-symbols-outlined text-[14px] text-on-surface-variant">{type === "Document" ? "description" : "gavel"}</span>
-              {type}
-            </label>
-          ))}
-        </div>
-
-        <div className="mb-4">
-          <div className="text-label-mono text-on-surface-variant uppercase tracking-widest text-[9px] mb-2">Relationships</div>
-          {["DEPENDS_ON", "REFERENCES", "HAS_POLICY", "HAS_SECTION"].map((type) => (
-            <label key={type} className="flex items-center gap-2 text-body-xs text-on-surface py-1 cursor-pointer">
-              <input type="checkbox" checked={relTypes[type]} onChange={() => setRelTypes({ ...relTypes, [type]: !relTypes[type] })} className="rounded border-outline-variant accent-secondary" />
-              {type.replace(/_/g, " ")}
-            </label>
-          ))}
-        </div>
-
-        <div>
-          <div className="text-label-mono text-on-surface-variant uppercase tracking-widest text-[9px] mb-2">Layout</div>
-          <select className="input-field text-body-xs">
-            <option>Force-Directed</option>
-            <option>Hierarchical</option>
-          </select>
-        </div>
+    <div className="w-[320px] border-l border-slate-200 bg-white overflow-y-auto shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 sticky top-0 bg-white z-10">
+        <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Inspector</span>
+        <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100">
+          <span className="material-symbols-outlined text-[16px] text-slate-400">close</span>
+        </button>
       </div>
+      <div className="p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[9px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: typeStyle.bg, color: typeStyle.text }}>
+            {data.element_type || "policy"}
+          </span>
+          <span className="text-[10px] text-slate-400">{node.type}</span>
+        </div>
+        <h3 className="text-sm font-bold text-slate-800 mb-3 leading-tight">{data.label || data.name || node.id}</h3>
 
-      {/* Graph */}
-      <div className="flex-1 relative">
-        {graphData.nodes.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-on-surface-variant">
-            <span className="material-symbols-outlined text-[48px] mb-3 text-outline">account_tree</span>
-            <p className="text-body-sm font-heading">No graph data</p>
-            <p className="text-body-xs text-outline mt-1">Ingest documents and build the graph from the sidebar.</p>
+        <Section title="Source Document">
+          <div className="flex items-center gap-1.5 text-xs text-slate-700">
+            <span className="material-symbols-outlined text-[13px] text-slate-400">description</span>
+            <span className="font-medium">{data.doc_filename || "Unknown"}</span>
           </div>
-        ) : (
-          <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeClick={handleNodeClick} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.15 }} minZoom={0.1} maxZoom={2}>
-            <Background color="#e7eeff" gap={24} size={1} />
-            <Controls position="bottom-left" />
-            <MiniMap nodeColor={(n) => { if (n.type === "Document") return "#131b2e"; return TYPE_COLORS[n.data?.element_type]?.border || "#4b41e1"; }} maskColor="rgba(0,0,0,0.06)" position="bottom-right" />
-          </ReactFlow>
+        </Section>
+
+        {data.source_text && (
+          <Section title="Extracted Evidence">
+            <p className="text-[11px] text-slate-600 italic leading-relaxed border-l-2 border-slate-300 pl-2">
+              "{String(data.source_text).slice(0, 200)}"
+            </p>
+          </Section>
         )}
 
-        {/* Inspector drawer */}
-        {inspector && (
-          <div className="absolute top-0 right-0 w-[320px] h-full bg-surface-container-low border-l border-outline-variant overflow-y-auto z-10">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant">
-              <span className="text-label-bold text-on-surface uppercase tracking-wider">Inspector</span>
-              <button onClick={() => setInspector(null)} className="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors">
-                <span className="material-symbols-outlined text-[16px]">close</span>
-              </button>
+        {data.value && (
+          <Section title="Current Value">
+            <div className="text-sm font-mono font-semibold text-slate-800">
+              {String(data.value)}
+              {data.unit && <span className="text-slate-400 font-normal ml-1">{data.unit}</span>}
             </div>
-            {inspector.node && (
-              <div className="p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="material-symbols-outlined text-[14px] text-secondary">gavel</span>
-                  <span className="badge bg-secondary/10 text-secondary">{inspector.node.element_type}</span>
-                  <span className="badge bg-amber-50 text-amber-700">High Sensitivity</span>
-                </div>
-                <h3 className="text-headline-md font-heading font-semibold text-on-surface mb-3">{inspector.node.name}</h3>
+          </Section>
+        )}
 
-                <div className="card p-3 mb-3">
-                  <div className="text-label-mono text-on-surface-variant uppercase tracking-widest text-[9px] mb-1">Primary Source</div>
-                  <div className="flex items-center gap-1 text-body-xs text-secondary">
-                    <span className="material-symbols-outlined text-[14px]">description</span>
-                    {inspector.node.doc_filename}
-                  </div>
-                </div>
-
-                <div className="card p-3 mb-3">
-                  <div className="text-label-mono text-on-surface-variant uppercase tracking-widest text-[9px] mb-1">Extracted Evidence</div>
-                  <p className="text-body-xs text-on-surface italic leading-relaxed">"{inspector.node.source_text}"</p>
-                </div>
-
-                <div className="card p-3 mb-3">
-                  <div className="text-label-mono text-on-surface-variant uppercase tracking-widest text-[9px] mb-2">Graph Connections</div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-body-xs">
-                      <span className="text-on-surface-variant flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">linear_scale</span>Direct Links</span>
-                      <span className="font-mono font-semibold">{inspector.relationship_count || 0}</span>
+        {detail?.relationships?.length > 0 && (
+          <Section title={`Relationships (${detail.relationships.length})`}>
+            <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+              {detail.relationships.map((rel, i) => {
+                const edgeInfo = EDGE_LABELS[rel.rel_type] || { label: rel.rel_type, color: "#94a3b8", icon: "link" };
+                return (
+                  <div key={i} className="flex items-start gap-2 text-[11px] p-1.5 rounded bg-white border border-slate-100">
+                    <span className="material-symbols-outlined text-[11px] mt-0.5" style={{ color: edgeInfo.color }}>{edgeInfo.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="font-medium text-slate-700 truncate">{rel.name}</span>
+                        <span className="text-[8px] px-1 rounded" style={{ background: `${edgeInfo.color}15`, color: edgeInfo.color }}>{edgeInfo.label}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">{rel.doc_filename}</div>
+                      {rel.reason && <div className="text-[10px] text-slate-500 mt-0.5 italic">{rel.reason}</div>}
                     </div>
                   </div>
-                </div>
+                );
+              })}
+            </div>
+          </Section>
+        )}
 
-                <div className="card p-3">
-                  <div className="text-label-mono text-on-surface-variant uppercase tracking-widest text-[9px] mb-2">Metadata Properties</div>
-                  <div className="space-y-1.5 text-body-xs">
-                    <div className="flex justify-between"><span className="text-on-surface-variant">ID</span><span className="font-mono">PE-{inspector.node.id}</span></div>
-                    <div className="flex justify-between"><span className="text-on-surface-variant">Confidence</span><span className="font-mono">98.4% (AI Assessed)</span></div>
-                  </div>
-                </div>
+        <Section title="Metadata">
+          <div className="space-y-1 text-[11px]">
+            <MetaRow label="Node ID" value={node.id} />
+            {data.policy_id && <MetaRow label="Policy ID" value={`PE-${data.policy_id}`} />}
+            {detail?.relationship_count != null && <MetaRow label="Direct Links" value={detail.relationship_count} />}
+          </div>
+        </Section>
+      </div>
+    </div>
+  );
+}
 
-                <div className="flex gap-2 mt-4">
-                  <button className="btn-secondary flex-1 text-[10px]">
-                    <span className="material-symbols-outlined text-[14px]">open_in_new</span> Open source
-                  </button>
-                  <button className="btn-ghost flex-1 text-[10px]">
-                    <span className="material-symbols-outlined text-[14px]">analytics</span> Assess impact
-                  </button>
-                </div>
+function Section({ title, children }) {
+  return (
+    <div className="mb-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
+      <div className="text-[9px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function MetaRow({ label, value }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-slate-400">{label}</span>
+      <span className="font-mono text-slate-600 truncate max-w-[140px]">{value}</span>
+    </div>
+  );
+}
+
+function EdgeDetailPanel({ edge, onClose }) {
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!edge) return;
+    setLoading(true);
+    const params = new URLSearchParams({ source: edge.source, target: edge.target, rel_type: edge.type });
+    fetch(`/api/graph/edge-detail?${params}`)
+      .then((r) => r.json())
+      .then(setDetail)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [edge]);
+
+  if (!edge) return null;
+  const edgeInfo = EDGE_LABELS[edge.type] || { label: edge.type, color: "#94a3b8", icon: "link" };
+
+  return (
+    <div className="w-[320px] border-l border-slate-200 bg-white overflow-y-auto shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 sticky top-0 bg-white z-10">
+        <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Edge Detail</span>
+        <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100">
+          <span className="material-symbols-outlined text-[16px] text-slate-400">close</span>
+        </button>
+      </div>
+      <div className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="material-symbols-outlined text-[16px]" style={{ color: edgeInfo.color }}>{edgeInfo.icon}</span>
+          <span className="text-sm font-bold text-slate-800">{edgeInfo.label}</span>
+        </div>
+
+        <Section title="Connection">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="font-medium text-slate-700 truncate flex-1">{detail?.source?.name || edge.source}</span>
+            <span className="material-symbols-outlined text-[14px] text-slate-300">arrow_forward</span>
+            <span className="font-medium text-slate-700 truncate flex-1">{detail?.target?.name || edge.target}</span>
+          </div>
+        </Section>
+
+        {detail?.explanation && (
+          <Section title="Explanation">
+            <p className="text-[11px] text-slate-600 leading-relaxed">{detail.explanation}</p>
+          </Section>
+        )}
+
+        {detail?.evidence && (
+          <Section title="Evidence">
+            <div className="space-y-1.5 text-[11px]">
+              {detail.evidence.a_value && <MetaRow label="Source value" value={detail.evidence.a_value} />}
+              {detail.evidence.b_value && <MetaRow label="Target value" value={detail.evidence.b_value} />}
+              {detail.evidence.a_document && <MetaRow label="Source doc" value={detail.evidence.a_document} />}
+              {detail.evidence.b_document && <MetaRow label="Target doc" value={detail.evidence.b_document} />}
+            </div>
+          </Section>
+        )}
+
+        <Section title="Edge Properties">
+          <div className="space-y-1 text-[11px]">
+            <MetaRow label="Type" value={edge.type} />
+            {edge.reason && (
+              <div>
+                <span className="text-slate-400">Reason</span>
+                <p className="text-[11px] text-slate-600 mt-0.5 italic">{edge.reason}</p>
               </div>
             )}
           </div>
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+export default function KnowledgeGraph() {
+  const [graphData, setGraphData] = useState({ nodes: [], edges: [], stats: {} });
+  const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedEdge, setSelectedEdge] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [nodeFilters, setNodeFilters] = useState({ Document: true, Chunk: false, PolicyElement: true });
+  const [edgeFilters, setEdgeFilters] = useState({
+    DEPENDS_ON: true, REFERENCES: true, HAS_POLICY: true,
+    HAS_SECTION: true, CONFLICTS_WITH: true, SUPERSEDED_BY: true,
+  });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch("/api/graph/overview")
+      .then((r) => r.json())
+      .then((d) => setGraphData({ nodes: d.nodes || [], edges: d.edges || [], stats: d.stats || {} }))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filters = useMemo(() => {
+    const f = {};
+    Object.entries(nodeFilters).forEach(([k, v]) => { f[k] = v; });
+    Object.entries(edgeFilters).forEach(([k, v]) => { f[k] = v; });
+    return f;
+  }, [nodeFilters, edgeFilters]);
+
+  const handleNodeClick = useCallback((nodeData) => { setSelectedNode(nodeData); setSelectedEdge(null); }, []);
+  const handleEdgeClick = useCallback((edgeData) => { setSelectedEdge(edgeData); setSelectedNode(null); }, []);
+  const handleNodeSelect = useCallback((nodeId) => {
+    setSelectedNodeId(nodeId);
+    if (!nodeId) { setSelectedNode(null); setSelectedEdge(null); }
+  }, []);
+
+  const stats = graphData.stats || {};
+
+  const toggleEdgeFilter = (type) => setEdgeFilters((prev) => ({ ...prev, [type]: !prev[type] }));
+  const toggleNodeFilter = (type) => setNodeFilters((prev) => ({ ...prev, [type]: !prev[type] }));
+
+  return (
+    <div className="h-full flex relative">
+      {/* Sidebar */}
+      <div
+        className="border-r border-slate-200 bg-white shrink-0 overflow-y-auto transition-all duration-300 flex flex-col"
+        style={{ width: sidebarOpen ? 220 : 0, minWidth: sidebarOpen ? 220 : 0, opacity: sidebarOpen ? 1 : 0 }}
+      >
+        {sidebarOpen && (
+          <div className="p-3 flex flex-col h-full min-w-[220px]">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[15px] text-slate-400">account_tree</span>
+                <span className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider">Graph</span>
+              </div>
+              <button onClick={() => setSidebarOpen(false)} className="w-5 h-5 flex items-center justify rounded hover:bg-slate-100" title="Collapse">
+                <span className="material-symbols-outlined text-[14px] text-slate-400">chevron_left</span>
+              </button>
+            </div>
+
+            {/* Stats - compact row */}
+            <div className="grid grid-cols-3 gap-1.5 mb-3">
+              <StatPill value={stats.documents || 0} label="Docs" color="#1e3a5f" />
+              <StatPill value={stats.policy_elements || 0} label="Items" color="#10b981" />
+              <StatPill value={stats.total_edges || 0} label="Edges" color="#3b82f6" />
+              {stats.conflicts > 0 && <StatPill value={stats.conflicts} label="Conflicts" color="#ef4444" />}
+              {stats.version_lineages > 0 && <StatPill value={stats.version_lineages} label="Versions" color="#6366f1" />}
+              <StatPill value={stats.sections || 0} label="Sections" color="#94a3b8" />
+            </div>
+
+            {/* Search */}
+            <div className="mb-3">
+              <div className="relative">
+                <span className="material-symbols-outlined text-[13px] text-slate-300 absolute left-2 top-1/2 -translate-y-1/2">search</span>
+                <input
+                  type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search..."
+                  className="w-full text-[11px] pl-7 pr-2 py-1.5 rounded border border-slate-200 bg-white focus:outline-none focus:border-blue-400"
+                />
+              </div>
+            </div>
+
+            {/* Node Types */}
+            <FilterSection title="Node Types">
+              {[
+                { type: "Document", icon: "description" },
+                { type: "Chunk", icon: "section" },
+                { type: "PolicyElement", icon: "gavel" },
+              ].map(({ type, icon }) => (
+                <label key={type} className="flex items-center gap-1.5 text-[11px] text-slate-600 py-0.5 cursor-pointer">
+                  <input type="checkbox" checked={nodeFilters[type]} onChange={() => toggleNodeFilter(type)} className="rounded border-slate-300 w-3 h-3" />
+                  <span className="material-symbols-outlined text-[12px] text-slate-400">{icon}</span>
+                  <span className="truncate">{type === "PolicyElement" ? "Elements" : type}</span>
+                  <span className="ml-auto text-[9px] text-slate-400">{graphData.nodes.filter((n) => n.type === type).length}</span>
+                </label>
+              ))}
+            </FilterSection>
+
+            {/* Edge Types */}
+            <FilterSection title="Relationships">
+              {Object.entries(EDGE_LABELS).map(([type, info]) => (
+                <label key={type} className="flex items-center gap-1.5 text-[11px] text-slate-600 py-0.5 cursor-pointer">
+                  <input type="checkbox" checked={edgeFilters[type]} onChange={() => toggleEdgeFilter(type)} className="rounded border-slate-300 w-3 h-3" />
+                  <span className="w-3 h-0 border-t-2 shrink-0" style={{ borderColor: info.color, borderStyle: ["CONFLICTS_WITH", "SUPERSEDED_BY"].includes(type) ? "dashed" : "solid" }} />
+                  <span className="truncate">{info.label}</span>
+                </label>
+              ))}
+            </FilterSection>
+          </div>
         )}
       </div>
+
+      {/* Sidebar toggle when collapsed */}
+      {!sidebarOpen && (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-white border border-slate-200 border-l-0 rounded-r-lg px-1 py-3 shadow-sm hover:bg-slate-50 transition-colors"
+          title="Expand sidebar"
+        >
+          <span className="material-symbols-outlined text-[16px] text-slate-400">chevron_right</span>
+        </button>
+      )}
+
+      {/* Graph */}
+      <div className="flex-1 relative min-w-0">
+        {loading ? (
+          <div className="h-full flex flex-col items-center justify-center text-slate-400">
+            <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin mb-3" />
+            <p className="text-xs">Loading graph...</p>
+          </div>
+        ) : graphData.nodes.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-slate-400">
+            <span className="material-symbols-outlined text-[48px] mb-3 text-slate-300">account_tree</span>
+            <p className="text-sm font-medium text-slate-500">No graph data</p>
+            <p className="text-xs text-slate-400 mt-1">Run the demo or ingest documents to build the graph.</p>
+          </div>
+        ) : (
+          <ReactFlowProvider>
+            <GraphView
+              graphData={graphData}
+              filters={filters}
+              onNodeClick={handleNodeClick}
+              onEdgeClick={handleEdgeClick}
+              selectedNodeId={selectedNodeId}
+              onNodeSelect={handleNodeSelect}
+              searchQuery={searchQuery}
+            />
+          </ReactFlowProvider>
+        )}
+      </div>
+
+      {/* Detail panels */}
+      {selectedNode && <ProvenancePanel node={selectedNode} onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }} />}
+      {selectedEdge && !selectedNode && <EdgeDetailPanel edge={selectedEdge} onClose={() => setSelectedEdge(null)} />}
+    </div>
+  );
+}
+
+function FilterSection({ title, children }) {
+  return (
+    <div className="mb-3">
+      <div className="text-[9px] font-mono uppercase tracking-wider text-slate-400 mb-1">{title}</div>
+      <div className="flex flex-col gap-0.5">{children}</div>
     </div>
   );
 }

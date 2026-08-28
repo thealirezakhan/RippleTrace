@@ -147,7 +147,7 @@ export default function ImpactResults({ result, onBack }) {
                 )}
 
                 <div className="mt-auto pt-4 border-t border-outline-variant/50">
-                  <button className="w-full bg-primary text-on-primary text-body-sm py-2 px-4 rounded hover:bg-primary/90 transition-colors">
+                  <button className="w-full bg-primary text-white text-on-primary text-body-sm py-2 px-4 rounded hover:bg-primary/90 transition-colors">
                     Acknowledge Impact
                   </button>
                 </div>

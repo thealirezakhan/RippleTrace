@@ -7,13 +7,11 @@ import {
   useReactFlow,
   applyNodeChanges,
   applyEdgeChanges,
+  MarkerType,
+  Handle,
+  Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-
-const COLORS = {
-  Document: { bg: "#1e3a5f", border: "#15294a", text: "white", accent: "#3b82f6" },
-  PolicyElement: { bg: "#ffffff", border: "#e2e8f0", text: "#1e293b", accent: "#10b981" },
-};
 
 const DOC_TYPE_COLORS = {
   regulation: { bg: "#7c3aed", icon: "gavel", label: "Regulation" },
@@ -22,6 +20,22 @@ const DOC_TYPE_COLORS = {
   procedure: { bg: "#b45309", icon: "engineering", label: "Procedure" },
   technical: { bg: "#be123c", icon: "code", label: "Technical" },
   configuration: { bg: "#475569", icon: "settings", label: "Configuration" },
+};
+
+const TYPE_COLORS = {
+  threshold: { bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" },
+  constraint: { bg: "#fef3c7", border: "#f59e0b", text: "#92400e" },
+  variable: { bg: "#ede9fe", border: "#8b5cf6", text: "#5b21b6" },
+  condition: { bg: "#d1fae5", border: "#10b981", text: "#065f46" },
+};
+
+const EDGE_STYLES = {
+  DEPENDS_ON: { stroke: "#f59e0b", label: "depends on", dash: false },
+  REFERENCES: { stroke: "#3b82f6", label: "references", dash: false },
+  HAS_POLICY: { stroke: "#10b981", label: "defines", dash: false },
+  HAS_SECTION: { stroke: "#94a3b8", label: "has section", dash: false },
+  CONFLICTS_WITH: { stroke: "#ef4444", label: "conflicts", dash: true },
+  SUPERSEDED_BY: { stroke: "#6366f1", label: "superseded by", dash: true },
 };
 
 function getDocType(filename) {
@@ -35,32 +49,22 @@ function getDocType(filename) {
   return "policy";
 }
 
-const TYPE_COLORS = {
-  threshold: { bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" },
-  constraint: { bg: "#fef3c7", border: "#f59e0b", text: "#92400e" },
-  variable: { bg: "#ede9fe", border: "#8b5cf6", text: "#5b21b6" },
-  condition: { bg: "#d1fae5", border: "#10b981", text: "#065f46" },
-};
-
-const EDGE_COLORS = {
-  DEPENDS_ON: { stroke: "#f59e0b", label: "depends on" },
-  REFERENCES: { stroke: "#3b82f6", label: "references" },
-  HAS_POLICY: { stroke: "#10b981", label: "defines" },
-};
-
-function computeLayout(nodes, edges) {
+function computeLayout(nodes) {
   if (nodes.length === 0) return [];
 
   const docNodes = nodes.filter((n) => n.type === "Document");
-  const policyNodes = nodes.filter((n) => n.type === "PolicyElement");
+  const chunkNodes = nodes.filter((n) => n.type === "Chunk");
+  const polNodes = nodes.filter((n) => n.type === "PolicyElement");
 
-  const docSpacing = 420;
+  const docSpacing = 650;
   const docStartX = 60;
   const docY = 40;
-  const policyStartY = 180;
-  const policySpacingX = 170;
-  const policySpacingY = 72;
-  const policiesPerCol = 6;
+  const chunkStartY = 200;
+  const chunkSpacing = 40;
+  const polStartY = 200;
+  const polSpacingX = 200;
+  const polSpacingY = 72;
+  const polsPerCol = 6;
 
   const positioned = new Map();
 
@@ -68,31 +72,48 @@ function computeLayout(nodes, edges) {
     positioned.set(doc.id, { x: docStartX + i * docSpacing, y: docY });
   });
 
-  const docPolicies = new Map();
-  policyNodes.forEach((pol) => {
-    const docId = pol.data?.doc_id ? `doc-${pol.data.doc_id}` : null;
+  const docChunks = new Map();
+  chunkNodes.forEach((ch) => {
+    const docId = ch.data?.doc_id ? `doc-${ch.data.doc_id}` : null;
     if (docId) {
-      if (!docPolicies.has(docId)) docPolicies.set(docId, []);
-      docPolicies.get(docId).push(pol);
+      if (!docChunks.has(docId)) docChunks.set(docId, []);
+      docChunks.get(docId).push(ch);
     }
   });
 
-  docPolicies.forEach((pols, docId) => {
+  docChunks.forEach((chunks, docId) => {
+    const docPos = positioned.get(docId);
+    if (!docPos) return;
+    chunks.forEach((ch, j) => {
+      positioned.set(ch.id, { x: docPos.x + 20, y: docPos.y + chunkStartY + j * chunkSpacing });
+    });
+  });
+
+  const docPols = new Map();
+  polNodes.forEach((pol) => {
+    const docId = pol.data?.doc_id ? `doc-${pol.data.doc_id}` : null;
+    if (docId) {
+      if (!docPols.has(docId)) docPols.set(docId, []);
+      docPols.get(docId).push(pol);
+    }
+  });
+
+  docPols.forEach((pols, docId) => {
     const docPos = positioned.get(docId);
     if (!docPos) return;
     pols.forEach((pol, j) => {
-      const col = Math.floor(j / policiesPerCol);
-      const row = j % policiesPerCol;
+      const col = Math.floor(j / polsPerCol);
+      const row = j % polsPerCol;
       positioned.set(pol.id, {
-        x: docPos.x + col * policySpacingX,
-        y: docPos.y + policyStartY + row * policySpacingY,
+        x: docPos.x + 220 + col * polSpacingX,
+        y: docPos.y + polStartY + row * polSpacingY,
       });
     });
   });
 
   nodes.forEach((n) => {
     if (!positioned.has(n.id)) {
-      positioned.set(n.id, { x: 100, y: 500 });
+      positioned.set(n.id, { x: 100, y: 600 });
     }
   });
 
@@ -102,11 +123,36 @@ function computeLayout(nodes, edges) {
   }));
 }
 
+function ChunkNode({ data, selected }) {
+  return (
+    <div
+      className="rounded-md border-2 px-3 py-1.5 transition-all duration-150 cursor-pointer min-w-[120px] max-w-[160px]"
+      style={{
+        background: "#f8fafc",
+        borderColor: selected ? "#3b82f6" : "#cbd5e1",
+        boxShadow: selected
+          ? "0 0 0 3px rgba(59,130,246,0.25), 0 2px 8px rgba(0,0,0,0.08)"
+          : "0 1px 2px rgba(0,0,0,0.05)",
+      }}
+    >
+      <Handle type="target" position={Position.Top} />
+      <Handle type="source" position={Position.Bottom} />
+      <div className="flex items-center gap-1 mb-0.5">
+        <span className="material-symbols-outlined text-[11px] text-slate-400">section</span>
+        <span className="text-[8px] font-mono uppercase tracking-wider text-slate-400">Section</span>
+      </div>
+      <div className="text-[11px] font-medium text-slate-700 leading-tight truncate">
+        {data.label || "Section"}
+      </div>
+    </div>
+  );
+}
+
 function PolicyNode({ data, selected }) {
   const typeStyle = TYPE_COLORS[data.element_type] || TYPE_COLORS.threshold;
   return (
     <div
-      className="rounded-lg border-2 px-3 py-2 transition-all duration-150 cursor-pointer group"
+      className="rounded-lg border-2 px-3 py-2 transition-all duration-150 cursor-pointer group relative"
       style={{
         background: "white",
         borderColor: selected ? "#3b82f6" : typeStyle.border,
@@ -117,6 +163,8 @@ function PolicyNode({ data, selected }) {
         maxWidth: 170,
       }}
     >
+      <Handle type="target" position={Position.Top} />
+      <Handle type="source" position={Position.Bottom} />
       <div className="flex items-center gap-1.5 mb-1">
         <span
           className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
@@ -124,6 +172,11 @@ function PolicyNode({ data, selected }) {
         >
           {data.element_type || "policy"}
         </span>
+        {data.value && (
+          <span className="text-[9px] font-mono text-slate-500 truncate max-w-[60px]">
+            {String(data.value).slice(0, 12)}
+          </span>
+        )}
       </div>
       <div className="text-xs font-semibold text-slate-800 leading-tight truncate">
         {data.label || data.name}
@@ -133,12 +186,17 @@ function PolicyNode({ data, selected }) {
           {data.doc_filename}
         </div>
       )}
-      {/* Hover tooltip */}
       <div className="absolute z-50 hidden group-hover:block left-1/2 -translate-x-1/2 -top-2 -translate-y-full pointer-events-none">
-        <div className="bg-slate-900 text-white text-[10px] rounded-lg px-3 py-2 shadow-xl max-w-[200px]">
+        <div className="bg-slate-900 text-white text-[10px] rounded-lg px-3 py-2 shadow-xl max-w-[220px]">
           <div className="font-semibold mb-1">{data.label || data.name}</div>
           <div className="opacity-70">Type: {data.element_type}</div>
+          {data.value && <div className="opacity-70">Value: {String(data.value)}</div>}
           {data.doc_filename && <div className="opacity-70">Doc: {data.doc_filename}</div>}
+          {data.source_text && (
+            <div className="opacity-50 mt-1 italic border-t border-slate-700 pt-1">
+              "{String(data.source_text).slice(0, 100)}..."
+            </div>
+          )}
           <div className="text-[9px] opacity-50 mt-1">Click to inspect</div>
         </div>
       </div>
@@ -161,6 +219,8 @@ function DocumentNode({ data, selected }) {
         minWidth: 200,
       }}
     >
+      <Handle type="target" position={Position.Top} />
+      <Handle type="source" position={Position.Bottom} />
       <div className="text-white">
         <div className="flex items-center gap-1.5 mb-1">
           <span className="material-symbols-outlined text-[12px] opacity-70">{typeStyle.icon}</span>
@@ -182,16 +242,29 @@ function DocumentNode({ data, selected }) {
 
 const nodeTypes = {
   Document: DocumentNode,
+  Chunk: ChunkNode,
   PolicyElement: PolicyNode,
 };
 
-export default function GraphView({ graphData, filters, onNodeClick, impactResult, view, searchQuery }) {
-  const [selectedNodeId, setSelectedNodeId] = useState(null);
+export default function GraphView({
+  graphData,
+  filters,
+  onNodeClick,
+  onEdgeClick,
+  impactResult,
+  view,
+  searchQuery,
+  selectedNodeId: externalSelected,
+  onNodeSelect,
+}) {
+  const [internalSelected, setInternalSelected] = useState(null);
   const [searchHighlights, setSearchHighlights] = useState(new Set());
-  const [hoveredEdge, setHoveredEdge] = useState(null);
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const { fitView } = useReactFlow();
+
+  const selectedNodeId = externalSelected !== undefined ? externalSelected : internalSelected;
+  const setSelectedNodeId = onNodeSelect || setInternalSelected;
 
   const impactedNames = useMemo(() => {
     if (!impactResult?.impacts) return new Set();
@@ -208,9 +281,7 @@ export default function GraphView({ graphData, filters, onNodeClick, impactResul
     graphData.nodes.forEach((n) => {
       const label = (n.data?.label || "").toLowerCase();
       const name = (n.data?.name || "").toLowerCase();
-      if (label.includes(q) || name.includes(q)) {
-        highlights.add(n.id);
-      }
+      if (label.includes(q) || name.includes(q)) highlights.add(n.id);
     });
     setSearchHighlights(highlights);
   }, [searchQuery, graphData.nodes]);
@@ -226,7 +297,7 @@ export default function GraphView({ graphData, filters, onNodeClick, impactResul
   }, [selectedNodeId, graphData.edges]);
 
   const computedNodes = useMemo(() => {
-    const layoutNodes = computeLayout(graphData.nodes, graphData.edges);
+    const layoutNodes = computeLayout(graphData.nodes);
     return layoutNodes.map((n) => {
       const isSelected = selectedNodeId === n.id;
       const isNeighbor = selectedNeighbors.has(n.id);
@@ -234,9 +305,14 @@ export default function GraphView({ graphData, filters, onNodeClick, impactResul
       const isImpacted = impactedNames.has(n.data?.name);
       const isSearched = searchHighlights.has(n.id);
 
+      let borderColor;
+      if (isSelected) borderColor = "#3b82f6";
+      else if (isImpacted) borderColor = "#ef4444";
+      else if (isSearched) borderColor = "#f59e0b";
+
       return {
         id: n.id,
-        type: n.type === "Document" ? "Document" : "PolicyElement",
+        type: n.type,
         data: {
           ...n.data,
           label: n.data?.label || n.id,
@@ -244,8 +320,9 @@ export default function GraphView({ graphData, filters, onNodeClick, impactResul
         },
         position: n.position,
         style: {
-          opacity: isDimmed ? 0.15 : 1,
+          opacity: isDimmed ? 0.12 : 1,
           transition: "opacity 0.2s ease",
+          ...(borderColor ? { outline: `2px solid ${borderColor}`, outlineOffset: 2 } : {}),
         },
       };
     });
@@ -253,40 +330,30 @@ export default function GraphView({ graphData, filters, onNodeClick, impactResul
 
   const computedEdges = useMemo(() => {
     return graphData.edges.map((e, i) => {
-      const edgeStyle = EDGE_COLORS[e.type] || { stroke: "#94a3b8", label: e.type };
+      const edgeStyle = EDGE_STYLES[e.type] || { stroke: "#94a3b8", label: e.type, dash: false };
       const isDimmed = selectedNodeId && !selectedNeighbors.has(e.source) && !selectedNeighbors.has(e.target);
       const isRelatedToSelected = selectedNodeId && (e.source === selectedNodeId || e.target === selectedNodeId);
-      const isCrossDoc = e.type === "DEPENDS_ON" || e.type === "REFERENCES";
+      const isCrossDoc = ["DEPENDS_ON", "REFERENCES", "CONFLICTS_WITH", "SUPERSEDED_BY"].includes(e.type);
+
+      const color = isDimmed ? "#e2e8f0" : edgeStyle.stroke;
 
       return {
-        id: `e-${e.source}-${e.target}-${e.type}-${i}`,
+        id: e.id,
         source: String(e.source),
         target: String(e.target),
-        type: isCrossDoc ? "default" : "smoothstep",
-        animated: isCrossDoc && isRelatedToSelected,
+        type: "smoothstep",
+        animated: false,
         style: {
-          stroke: isDimmed ? "#e2e8f0" : edgeStyle.stroke,
-          strokeWidth: isDimmed ? 0.5 : isRelatedToSelected ? 2.5 : isCrossDoc ? 1.2 : 1,
-          opacity: isDimmed ? 0.15 : isCrossDoc ? 0.5 : 0.8,
-          transition: "opacity 0.2s, stroke 0.2s, stroke-width 0.2s",
+          stroke: color,
+          strokeWidth: isDimmed ? 0.5 : isRelatedToSelected ? 2.5 : isCrossDoc ? 1.5 : 1,
+          opacity: isDimmed ? 0.1 : isCrossDoc ? 0.6 : 0.8,
         },
-        label: isRelatedToSelected ? edgeStyle.label : undefined,
-        labelStyle: {
-          fontSize: 9,
-          fill: "#64748b",
-          fontWeight: 500,
-        },
-        labelBgStyle: {
-          fill: "white",
-          fillOpacity: 0.9,
-          rx: 4,
-        },
-        markerEnd: isCrossDoc ? {
-          type: "arrowclosed",
-          color: isDimmed ? "#e2e8f0" : edgeStyle.stroke,
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color,
           width: 12,
           height: 12,
-        } : undefined,
+        },
       };
     });
   }, [graphData.edges, selectedNodeId, selectedNeighbors]);
@@ -305,16 +372,13 @@ export default function GraphView({ graphData, filters, onNodeClick, impactResul
 
   const filteredEdges = useMemo(() => {
     return computedEdges.filter((e) => {
-      const sourceNode = graphData.nodes.find((n) => n.id === e.source);
-      const targetNode = graphData.nodes.find((n) => n.id === e.target);
-      if (!sourceNode || !targetNode) return false;
       if (!filteredNodeIds.has(e.source) || !filteredNodeIds.has(e.target)) return false;
-      const edgeData = graphData.edges.find(
-        (ge) => ge.source === e.source && ge.target === e.target
+      const origEdge = graphData.edges.find(
+        (ge) => ge.id === e.id || (ge.source === e.source && ge.target === e.target)
       );
-      return filters[edgeData?.type] ?? true;
+      return filters[origEdge?.type] ?? true;
     });
-  }, [computedEdges, graphData.nodes, graphData.edges, filteredNodeIds, filters]);
+  }, [computedEdges, graphData.edges, filteredNodeIds, filters]);
 
   useEffect(() => {
     setNodes(filteredNodes);
@@ -342,24 +406,26 @@ export default function GraphView({ graphData, filters, onNodeClick, impactResul
     (event, node) => {
       setSelectedNodeId(node.id);
       const nodeData = graphData.nodes.find((n) => n.id === node.id);
-      if (nodeData) {
-        onNodeClick(nodeData);
+      if (nodeData && onNodeClick) onNodeClick(nodeData);
+    },
+    [graphData.nodes, onNodeClick, setSelectedNodeId]
+  );
+
+  const handleEdgeClick = useCallback(
+    (event, edge) => {
+      if (onEdgeClick) {
+        const edgeData = graphData.edges.find(
+          (ge) => ge.source === edge.source && ge.target === edge.target && ge.type === edge.type
+        );
+        onEdgeClick(edgeData || edge);
       }
     },
-    [graphData.nodes, onNodeClick]
+    [graphData.edges, onEdgeClick]
   );
 
   const handlePaneClick = useCallback(() => {
     setSelectedNodeId(null);
-  }, []);
-
-  const handleEdgeMouseEnter = useCallback((event, edge) => {
-    setHoveredEdge(edge.id.replace(/^e-/, "").replace(/-[^-]+$/, ""));
-  }, []);
-
-  const handleEdgeMouseLeave = useCallback(() => {
-    setHoveredEdge(null);
-  }, []);
+  }, [setSelectedNodeId]);
 
   if (!graphData.nodes.length) {
     return (
@@ -383,9 +449,8 @@ export default function GraphView({ graphData, filters, onNodeClick, impactResul
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
+        onEdgeClick={handleEdgeClick}
         onPaneClick={handlePaneClick}
-        onEdgeMouseEnter={handleEdgeMouseEnter}
-        onEdgeMouseLeave={handleEdgeMouseLeave}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.15 }}
@@ -406,6 +471,7 @@ export default function GraphView({ graphData, filters, onNodeClick, impactResul
               const dt = getDocType(n.data?.label);
               return DOC_TYPE_COLORS[dt]?.bg || "#1e3a5f";
             }
+            if (n.type === "Chunk") return "#94a3b8";
             const t = n.data?.element_type;
             return TYPE_COLORS[t]?.border || "#10b981";
           }}
@@ -418,29 +484,43 @@ export default function GraphView({ graphData, filters, onNodeClick, impactResul
       </ReactFlow>
 
       {/* Legend */}
-      <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm rounded-lg border border-slate-200 px-3 py-2 text-[10px]">
+      <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm rounded-lg border border-slate-200 px-3 py-2 text-[10px] max-h-[calc(100%-24px)] overflow-y-auto">
         <div className="font-semibold text-slate-600 mb-1.5">Legend</div>
-        <div className="flex flex-col gap-1">
+
+        <div className="text-[9px] font-mono uppercase tracking-wider text-slate-400 mb-1">Document Types</div>
+        <div className="flex flex-col gap-1 mb-2">
           {Object.entries(DOC_TYPE_COLORS).map(([type, style]) => (
             <div key={type} className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded" style={{ background: style.bg }} />
               <span className="text-slate-500">{style.label}</span>
             </div>
           ))}
-          <div className="border-t border-slate-200 my-1" />
+        </div>
+
+        <div className="text-[9px] font-mono uppercase tracking-wider text-slate-400 mb-1">Element Types</div>
+        <div className="flex flex-col gap-1 mb-2">
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-slate-100 border border-slate-300" />
+            <span className="text-slate-500">Section</span>
+          </div>
           {Object.entries(TYPE_COLORS).map(([type, style]) => (
             <div key={type} className="flex items-center gap-1.5">
-              <span
-                className="w-3 h-3 rounded border"
-                style={{ background: style.bg, borderColor: style.border }}
-              />
+              <span className="w-3 h-3 rounded border" style={{ background: style.bg, borderColor: style.border }} />
               <span className="text-slate-500 capitalize">{type}</span>
             </div>
           ))}
-          <div className="border-t border-slate-200 my-1" />
-          {Object.entries(EDGE_COLORS).map(([type, style]) => (
+        </div>
+
+        <div className="text-[9px] font-mono uppercase tracking-wider text-slate-400 mb-1">Relationships</div>
+        <div className="flex flex-col gap-1">
+          {Object.entries(EDGE_STYLES).map(([type, style]) => (
             <div key={type} className="flex items-center gap-1.5">
-              <span className="w-4 h-0.5" style={{ background: style.stroke }} />
+              <span
+                className="w-4 h-0"
+                style={{
+                  borderTop: `2px ${style.dash ? "dashed" : "solid"} ${style.stroke}`,
+                }}
+              />
               <span className="text-slate-500">{style.label}</span>
             </div>
           ))}

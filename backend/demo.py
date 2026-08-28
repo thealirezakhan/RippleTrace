@@ -140,6 +140,20 @@ async def run_demo():
     stage3["status"] = "complete"
     results["stages"].append(stage3)
 
+    # Stage 3b: Version lineage + conflict detection
+    stage3b = {"name": "Version Lineage & Conflict Detection", "status": "running"}
+    try:
+        from graph import _create_version_lineage, _create_conflict_edges
+        async with driver.session() as session:
+            ver_count = await _create_version_lineage(session)
+            conflict_count = await _create_conflict_edges(session)
+        stage3b["version_lineages"] = ver_count
+        stage3b["conflicts"] = conflict_count
+    except Exception as e:
+        stage3b["error"] = str(e)
+    stage3b["status"] = "complete"
+    results["stages"].append(stage3b)
+
     # Stage 4: Run impact simulation
     stage4 = {"name": "Impact Simulation", "status": "running"}
     try:

@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect } from "react";
-import { ReactFlowProvider } from "@xyflow/react";
 import Overview from "./screens/Overview";
 import KnowledgeGraph from "./screens/KnowledgeGraph";
 import ImpactAnalysis from "./screens/ImpactAnalysis";
@@ -70,7 +69,7 @@ export default function App() {
     }
     switch (activeScreen) {
       case "overview": return <Overview onNavigate={navigateTo} openDocument={openDocument} />;
-      case "graph": return <ReactFlowProvider><KnowledgeGraph /></ReactFlowProvider>;
+      case "graph": return <KnowledgeGraph />;
       case "impact": return <ImpactAnalysis onResults={showImpactResults} />;
       case "diff": return <DiffViewer onNavigate={navigateTo} />;
       case "contradictions": return <ContradictionViewer onNavigate={navigateTo} />;
