@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-surface text-on-surface font-body;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
+
+  code, pre {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+  }
+}
+
+@layer components {
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+    font-size: 20px;
+    line-height: 1;
+    vertical-align: middle;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-2.5 text-body-xs text-on-surface-variant rounded-md cursor-pointer transition-colors duration-100;
+  }
+  .nav-item:hover {
+    @apply bg-surface-container-low;
+  }
+  .nav-item.active {
+    @apply bg-surface-container text-on-surface font-medium;
+  }
+
+  .metric-card {
+    @apply bg-surface-container-lowest border border-outline-variant rounded p-4;
+  }
+
+  .data-table {
+    @apply w-full text-body-xs;
+  }
+  .data-table th {
+    @apply font-mono text-label-mono text-on-surface-variant uppercase tracking-widest text-left py-2 px-3 border-b border-outline-variant;
+  }
+  .data-table td {
+    @apply py-2.5 px-3 border-b border-outline-variant;
+  }
+  .data-table tr:hover td {
+    @apply bg-surface-container-low;
+  }
+
+  .btn-primary {
+    @apply bg-inverse-surface text-inverse-on-surface px-4 py-2 text-body-xs font-medium rounded cursor-pointer transition-colors duration-100 inline-flex items-center gap-2;
+  }
+  .btn-primary:hover {
+    @apply opacity-90;
+  }
+
+  .btn-secondary {
+    @apply bg-surface-container-lowest border border-outline-variant text-on-surface px-4 py-2 text-body-xs font-medium rounded cursor-pointer transition-colors duration-100 inline-flex items-center gap-2;
+  }
+  .btn-secondary:hover {
+    @apply bg-surface-container-low;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-secondary px-4 py-2 text-body-xs font-medium rounded cursor-pointer transition-colors duration-100 inline-flex items-center gap-2;
+  }
+  .btn-ghost:hover {
+    @apply bg-surface-container-low;
+  }
+
+  .input-field {
+    @apply w-full px-3 py-2 text-body-xs bg-surface-container-lowest border border-outline-variant rounded outline-none transition-colors duration-100;
+  }
+  .input-field:focus {
+    @apply ring-1 ring-secondary border-secondary;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 text-label-mono rounded-full;
+  }
+
+  .card {
+    @apply bg-surface-container-lowest border border-outline-variant rounded;
+  }
+
+  .severity-high {
+    @apply text-error font-medium;
+  }
+  .severity-medium {
+    @apply text-amber-600 font-medium;
+  }
+  .severity-low {
+    @apply text-secondary font-medium;
+  }
+
+  .animate-spin {
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+}

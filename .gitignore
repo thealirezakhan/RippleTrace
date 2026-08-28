@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Build output
+dist/
+build/
+.vite/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE / Agent config
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.opencode/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker volumes (data only, not configs)
+pgdata/
+neo4jdata/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
