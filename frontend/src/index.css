@@ -125,4 +125,12 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
   }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 0.2s ease-out;
+  }
+  @keyframes slide-in-right {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
 }

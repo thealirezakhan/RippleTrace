@@ -5,7 +5,6 @@ import ImpactAnalysis from "./screens/ImpactAnalysis";
 import DocumentRepo from "./screens/DocumentRepo";
 import Ingestion from "./screens/Ingestion";
 import DocumentDetail from "./screens/DocumentDetail";
-import ImpactResults from "./screens/ImpactResults";
 import DiffViewer from "./screens/DiffViewer";
 import ContradictionViewer from "./screens/ContradictionViewer";
 import GlobalSearch from "./components/GlobalSearch";
@@ -29,7 +28,7 @@ const BOTTOM_NAV = [
 export default function App() {
   const [activeScreen, setActiveScreen] = useState("overview");
   const [selectedDocId, setSelectedDocId] = useState(null);
-  const [impactResult, setImpactResult] = useState(null);
+  const [impactPreselected, setImpactPreselected] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
@@ -47,7 +46,7 @@ export default function App() {
   const navigateTo = useCallback((screen) => {
     setActiveScreen(screen);
     setSelectedDocId(null);
-    setImpactResult(null);
+    setImpactPreselected(null);
   }, []);
 
   const openDocument = useCallback((docId) => {
@@ -55,22 +54,19 @@ export default function App() {
     setActiveScreen("document-detail");
   }, []);
 
-  const showImpactResults = useCallback((result) => {
-    setImpactResult(result);
-    setActiveScreen("impact-results");
+  const navigateToImpact = useCallback((elementName) => {
+    setImpactPreselected(elementName);
+    setActiveScreen("impact");
   }, []);
 
   const renderScreen = () => {
     if (activeScreen === "document-detail" && selectedDocId) {
       return <DocumentDetail docId={selectedDocId} onBack={() => navigateTo("documents")} onNavigate={navigateTo} openDocument={openDocument} />;
     }
-    if (activeScreen === "impact-results" && impactResult) {
-      return <ImpactResults result={impactResult} onBack={() => navigateTo("impact")} />;
-    }
     switch (activeScreen) {
       case "overview": return <Overview onNavigate={navigateTo} openDocument={openDocument} />;
-      case "graph": return <KnowledgeGraph />;
-      case "impact": return <ImpactAnalysis onResults={showImpactResults} />;
+      case "graph": return <KnowledgeGraph onNavigateToImpact={navigateToImpact} />;
+      case "impact": return <ImpactAnalysis preselectedElement={impactPreselected} />;
       case "diff": return <DiffViewer onNavigate={navigateTo} />;
       case "contradictions": return <ContradictionViewer onNavigate={navigateTo} />;
       case "documents": return <DocumentRepo openDocument={openDocument} />;

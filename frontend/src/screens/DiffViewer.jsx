@@ -98,55 +98,59 @@ export default function DiffViewer({ onNavigate }) {
         </div>
       )}
 
-      <div className="flex gap-6">
-        {/* Changes List */}
-        <div className="flex-1 space-y-3">
-          {filtered.map((change, i) => {
-            const style = CHANGE_COLORS[change.change_type] || CHANGE_COLORS.reworded;
-            const isSelected = selectedChange?.clause_id === change.clause_id;
-            return (
-              <button
-                key={change.clause_id + i}
-                onClick={() => setSelectedChange(isSelected ? null : change)}
-                className={`w-full text-left ${style.bg} border ${style.border} rounded-lg p-4 transition-all duration-150 ${
-                  isSelected ? "ring-2 ring-secondary shadow-sm" : "hover:shadow-sm"
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${style.badge}`}>
-                      {change.change_type}
-                    </span>
-                    <span className="text-body-sm font-heading font-semibold text-on-surface">{change.heading}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {change.similarity > 0 && (
-                      <span className="text-[10px] text-on-surface-variant">{Math.round(change.similarity * 100)}% similar</span>
-                    )}
-                    <span className={`w-2 h-2 rounded-full ${change.impact_level === "high" ? "bg-red-500" : change.impact_level === "medium" ? "bg-amber-500" : "bg-blue-500"}`} />
-                  </div>
+      {/* Changes List */}
+      <div className="space-y-3">
+        {filtered.map((change, i) => {
+          const style = CHANGE_COLORS[change.change_type] || CHANGE_COLORS.reworded;
+          const isSelected = selectedChange?.clause_id === change.clause_id;
+          return (
+            <button
+              key={change.clause_id + i}
+              onClick={() => setSelectedChange(isSelected ? null : change)}
+              className={`w-full text-left ${style.bg} border ${style.border} rounded-lg p-4 transition-all duration-150 ${
+                isSelected ? "ring-2 ring-secondary shadow-sm" : "hover:shadow-sm"
+              }`}
+            >
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded shrink-0 ${style.badge}`}>
+                    {change.change_type}
+                  </span>
+                  <span className="text-body-sm font-heading font-semibold text-on-surface truncate">{change.heading}</span>
                 </div>
-                <p className={`text-body-xs ${style.text} leading-relaxed`}>{change.explanation}</p>
-                {change.value_changes?.length > 0 && (
-                  <div className="flex gap-3 mt-2">
-                    {change.value_changes.map((vc, j) => (
-                      <span key={j} className="text-[10px] font-mono bg-white/50 px-2 py-0.5 rounded">
-                        {vc.old_value} → {vc.new_value} {vc.unit || ""}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  {change.similarity > 0 && (
+                    <span className="text-[10px] text-on-surface-variant">{Math.round(change.similarity * 100)}% similar</span>
+                  )}
+                  <span className={`w-2 h-2 rounded-full ${change.impact_level === "high" ? "bg-red-500" : change.impact_level === "medium" ? "bg-amber-500" : "bg-blue-500"}`} />
+                </div>
+              </div>
+              <p className={`text-body-xs ${style.text} leading-relaxed`}>{change.explanation}</p>
+              {change.value_changes?.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {change.value_changes.map((vc, j) => (
+                    <span key={j} className="text-[10px] font-mono bg-white/50 px-2 py-0.5 rounded shrink-0">
+                      {vc.old_value} → {vc.new_value} {vc.unit || ""}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-        {/* Detail Panel */}
-        {selectedChange && (
-          <aside className="w-96 bg-surface-container-lowest border border-outline-variant rounded-xl flex flex-col shrink-0 overflow-hidden">
-            <div className="px-4 py-3 border-b border-outline-variant bg-surface-container-low/50 flex justify-between items-center">
+      {/* Detail Panel - Overlay */}
+      {selectedChange && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/20 z-40 transition-opacity"
+            onClick={() => setSelectedChange(null)}
+          />
+          <aside className="fixed right-0 top-0 bottom-0 w-[420px] max-w-[90vw] bg-surface-container-lowest border-l border-outline-variant flex flex-col z-50 shadow-2xl animate-slide-in-right">
+            <div className="px-4 py-3 border-b border-outline-variant bg-surface-container-low/50 flex justify-between items-center shrink-0">
               <h3 className="font-label-bold text-[12px] text-on-surface uppercase">Clause Detail</h3>
-              <button onClick={() => setSelectedChange(null)} className="text-on-surface-variant hover:text-on-surface">
+              <button onClick={() => setSelectedChange(null)} className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-low transition-colors text-on-surface-variant hover:text-on-surface">
                 <span className="material-symbols-outlined text-[16px]">close</span>
               </button>
             </div>
@@ -161,7 +165,7 @@ export default function DiffViewer({ onNavigate }) {
                   <div className="font-label-mono text-[10px] text-red-500 mb-1 flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-red-400" /> OLD VERSION
                   </div>
-                  <div className="bg-red-50 border border-red-100 rounded p-3 text-[11px] text-on-surface-variant leading-relaxed max-h-48 overflow-auto whitespace-pre-wrap">
+                  <div className="bg-red-50 border border-red-100 rounded p-3 text-[11px] text-on-surface-variant leading-relaxed max-h-48 overflow-auto whitespace-pre-wrap break-words">
                     {selectedChange.old_content}
                   </div>
                 </div>
@@ -172,7 +176,7 @@ export default function DiffViewer({ onNavigate }) {
                   <div className="font-label-mono text-[10px] text-emerald-600 mb-1 flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-emerald-400" /> NEW VERSION
                   </div>
-                  <div className="bg-emerald-50 border border-emerald-100 rounded p-3 text-[11px] text-on-surface-variant leading-relaxed max-h-48 overflow-auto whitespace-pre-wrap">
+                  <div className="bg-emerald-50 border border-emerald-100 rounded p-3 text-[11px] text-on-surface-variant leading-relaxed max-h-48 overflow-auto whitespace-pre-wrap break-words">
                     {selectedChange.new_content}
                   </div>
                 </div>
@@ -183,8 +187,8 @@ export default function DiffViewer({ onNavigate }) {
                   <div className="font-label-mono text-[10px] text-on-surface-variant mb-2">VALUE CHANGES</div>
                   {selectedChange.value_changes.map((vc, i) => (
                     <div key={i} className="bg-surface-container-low rounded p-2 mb-1 flex items-center justify-between">
-                      <span className="text-[10px] text-on-surface-variant">{vc.parameter}</span>
-                      <span className="font-mono text-[11px] font-semibold">
+                      <span className="text-[10px] text-on-surface-variant truncate mr-2">{vc.parameter}</span>
+                      <span className="font-mono text-[11px] font-semibold shrink-0">
                         <span className="text-red-500">{vc.old_value}</span>
                         <span className="mx-1">→</span>
                         <span className="text-emerald-600">{vc.new_value}</span>
@@ -207,8 +211,8 @@ export default function DiffViewer({ onNavigate }) {
               </div>
             </div>
           </aside>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }

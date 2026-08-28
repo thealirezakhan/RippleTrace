@@ -27,7 +27,7 @@ function StatPill({ value, label, color }) {
   );
 }
 
-function ProvenancePanel({ node, onClose }) {
+function ProvenancePanel({ node, onClose, onNavigateToImpact }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -117,6 +117,16 @@ function ProvenancePanel({ node, onClose }) {
             {detail?.relationship_count != null && <MetaRow label="Direct Links" value={detail.relationship_count} />}
           </div>
         </Section>
+
+        {node.type === "PolicyElement" && onNavigateToImpact && (
+          <button
+            onClick={() => onNavigateToImpact(data.label || data.name || node.id)}
+            className="w-full mt-2 bg-blue-600 text-white text-[12px] font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            <span className="material-symbols-outlined text-[16px]">analytics</span>
+            Simulate Impact
+          </button>
+        )}
       </div>
     </div>
   );
@@ -213,7 +223,7 @@ function EdgeDetailPanel({ edge, onClose }) {
   );
 }
 
-export default function KnowledgeGraph() {
+export default function KnowledgeGraph({ onNavigateToImpact }) {
   const [graphData, setGraphData] = useState({ nodes: [], edges: [], stats: {} });
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
@@ -367,7 +377,7 @@ export default function KnowledgeGraph() {
       </div>
 
       {/* Detail panels */}
-      {selectedNode && <ProvenancePanel node={selectedNode} onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }} />}
+      {selectedNode && <ProvenancePanel node={selectedNode} onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }} onNavigateToImpact={onNavigateToImpact} />}
       {selectedEdge && !selectedNode && <EdgeDetailPanel edge={selectedEdge} onClose={() => setSelectedEdge(null)} />}
     </div>
   );
